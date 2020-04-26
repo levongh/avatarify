@@ -176,7 +176,7 @@ if __name__ == "__main__":
     kp_source = None
 
     parser = ArgumentParser()
-    parser.add_argument("--config", required=True, help="path to config")
+    parser.add_argument("--config", help="path to config")
     parser.add_argument("--checkpoint", default='vox-cpk.pth.tar', help="path to checkpoint to restore")
 
     parser.add_argument("--relative", dest="relative", action="store_true", help="use relative or absolute keypoint coordinates")
@@ -191,9 +191,12 @@ if __name__ == "__main__":
 
     parser.add_argument("--avatars", default="./avatars", help="path to avatars directory")
  
-    parser.set_defaults(relative=False)
-    parser.set_defaults(adapt_scale=False)
+    parser.set_defaults(relative=True)
+    parser.set_defaults(adapt_scale=True)
     parser.set_defaults(no_pad=False)
+    parser.set_defaults(cam=0);
+    parser.set_defaults(checkpoint="vox-adv-cpk.pth.tar");
+    parser.set_defaults(config="fomm/config/vox-adv-256.yaml");
 
     opt = parser.parse_args()
 
