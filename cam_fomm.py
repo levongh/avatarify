@@ -173,6 +173,135 @@ def change_avatar(fa, new_avatar):
 def log(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
+def process(opt, generator, kp_detector, fa, cap, device):
+    global display_string
+    global kp_driving_initial
+    global kp_source
+    global avatar
+
+    IMG_SIZE = 256
+
+    cur_ava = 0    
+    change_avatar(fa, avatars[cur_ava])
+    passthrough = False
+
+    cv2.namedWindow('cam', cv2.WINDOW_GUI_NORMAL)
+    cv2.namedWindow('avatarify', cv2.WINDOW_GUI_NORMAL)
+    cv2.moveWindow('cam', 0, 0)
+    cv2.moveWindow('avatarify', 600, 0)
+
+    frame_proportion = 0.9
+
+    overlay_alpha = 0.0
+    preview_flip = False
+    output_flip = False
+    find_keyframe = False
+
+    while True:
+        green_overlay = False
+        
+        ret, frame = cap.read()
+        if not ret:
+            log("Can't receive frame (stream end?). Exiting ...")
+            break
+
+        frame_orig = frame.copy()
+
+        frame, lrud = crop(frame, p=frame_proportion)
+        frame = resize(frame, (IMG_SIZE, IMG_SIZE))[..., :3]
+
+        if find_keyframe:
+            if is_new_frame_better(fa, avatar, frame, device):
+                log("Taking new frame!")
+                green_overlay = True
+                kp_driving_initial = None
+
+        if passthrough:
+            out = frame_orig[..., ::-1]
+        else:
+            pred_start = time.time()
+            pred = predict(frame, avatar, opt.relative, opt.adapt_scale, fa, device=device)
+            out = pred
+
+        if out.dtype != np.uint8:
+            out = (out * 255).astype(np.uint8)
+        
+        key = cv2.waitKey(1)
+
+        if key == 27: # ESC
+            break
+        elif key == ord('d'):
+            cur_ava += 1
+            if cur_ava >= len(avatars):
+                cur_ava = 0
+            passthrough = False
+            change_avatar(fa, avatars[cur_ava])
+        elif key == ord('a'):
+            cur_ava -= 1
+            if cur_ava < 0:
+                cur_ava = len(avatars) - 1
+            passthrough = False
+            change_avatar(fa, avatars[cur_ava])
+        elif key == ord('w'):
+            frame_proportion -= 0.05
+            frame_proportion = max(frame_proportion, 0.1)
+        elif key == ord('s'):
+            frame_proportion += 0.05
+            frame_proportion = min(frame_proportion, 1.0)
+        elif key == ord('x'):
+           kp_driving_initial = None
+        elif key == ord('z'):
+            overlay_alpha = max(overlay_alpha - 0.1, 0.0)
+        elif key == ord('c'):
+            overlay_alpha = min(overlay_alpha + 0.1, 1.0)
+        elif key == ord('r'):
+            preview_flip = not preview_flip
+        elif key == ord('t'):
+            output_flip = not output_flip
+        elif key == ord('f'):
+            find_keyframe = not find_keyframe
+        elif key == ord('q'):
+            try:
+                log('Loading StyleGAN avatar...')
+                avatar = load_stylegan_avatar()
+                passthrough = False
+                change_avatar(fa, avatar)
+            except:
+                log('Failed to load StyleGAN avatar')
+        elif 48 < key < 58:
+            cur_ava = min(key - 49, len(avatars) - 1)
+            passthrough = False
+            change_avatar(fa, avatars[cur_ava])
+        elif key == 48:
+            passthrough = not passthrough
+        elif key != -1:
+            log(key)
+
+        if _streaming:
+            out = cv2.resize(out, stream_img_size)
+            stream.schedule_frame(out)
+
+        preview_frame = cv2.addWeighted( avatars[cur_ava][:,:,::-1], overlay_alpha, frame, 1.0 - overlay_alpha, 0.0)
+        
+        if preview_flip:
+            preview_frame = cv2.flip(preview_frame, 1)
+            
+        if output_flip:
+            out = cv2.flip(out, 1)
+            
+        if green_overlay:
+            green_alpha = 0.8
+            overlay = preview_frame.copy()
+            overlay[:] = (0, 255, 0)
+            preview_frame = cv2.addWeighted( preview_frame, green_alpha, overlay, 1.0 - green_alpha, 0.0)
+
+        if find_keyframe:
+            preview_frame = cv2.putText(preview_frame, display_string, (10, 220), 0, 0.5 * IMG_SIZE / 256, (255, 255, 255), 1)
+
+        cv2.imshow('cam', preview_frame)
+        cv2.imshow('avatarify', out[..., ::-1])
+    cv2.destroyAllWindows()
+
 if __name__ == "__main__":
 
     global display_string
@@ -233,166 +362,7 @@ if __name__ == "__main__":
     fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=True, device=device)
 
     cap = cv2.VideoCapture(opt.cam)
-    #cap.start()
-
-    #if _streaming:
-    #    ret, frame = cap.read()
-    #    stream_img_size = frame.shape[1], frame.shape[0]
-    #    stream = pyfakewebcam.FakeWebcam(f'/dev/video{opt.virt_cam}', *stream_img_size)
-
-    cur_ava = 0    
     avatar = None
-    change_avatar(fa, avatars[cur_ava])
-    passthrough = False
 
-    cv2.namedWindow('cam', cv2.WINDOW_GUI_NORMAL)
-    cv2.namedWindow('avatarify', cv2.WINDOW_GUI_NORMAL)
-    cv2.moveWindow('cam', 0, 0)
-    cv2.moveWindow('avatarify', 600, 0)
+    process(opt, generator, kp_detector, fa, cap, device)
 
-    frame_proportion = 0.9
-
-    overlay_alpha = 0.0
-    preview_flip = False
-    output_flip = False
-    find_keyframe = False
-
-    #fps_hist = []
-    #fps = 0
-    #show_fps = False
-
-    while True:
-        #timing = {
-        #    'preproc': 0,
-        #    'predict': 0,
-        #    'postproc': 0
-        #}
-
-        #t_start = time.time()
-
-        green_overlay = False
-        
-        ret, frame = cap.read()
-        if not ret:
-            log("Can't receive frame (stream end?). Exiting ...")
-            break
-
-        frame_orig = frame.copy()
-
-        frame, lrud = crop(frame, p=frame_proportion)
-        frame = resize(frame, (IMG_SIZE, IMG_SIZE))[..., :3]
-
-        if find_keyframe:
-            if is_new_frame_better(fa, avatar, frame, device):
-                log("Taking new frame!")
-                green_overlay = True
-                kp_driving_initial = None
-
-        #timing['preproc'] = (time.time() - t_start) * 1000
-
-        if passthrough:
-            out = frame_orig[..., ::-1]
-        else:
-            pred_start = time.time()
-            pred = predict(frame, avatar, opt.relative, opt.adapt_scale, fa, device=device)
-            out = pred
-        #    timing['predict'] = (time.time() - pred_start) * 1000
-
-        postproc_start = time.time()
-
-        #if not opt.no_pad:
-        #    out = pad_img(out, stream_img_size)
-
-        if out.dtype != np.uint8:
-            out = (out * 255).astype(np.uint8)
-        
-        key = cv2.waitKey(1)
-
-        if key == 27: # ESC
-            break
-        elif key == ord('d'):
-            cur_ava += 1
-            if cur_ava >= len(avatars):
-                cur_ava = 0
-            passthrough = False
-            change_avatar(fa, avatars[cur_ava])
-        elif key == ord('a'):
-            cur_ava -= 1
-            if cur_ava < 0:
-                cur_ava = len(avatars) - 1
-            passthrough = False
-            change_avatar(fa, avatars[cur_ava])
-        elif key == ord('w'):
-            frame_proportion -= 0.05
-            frame_proportion = max(frame_proportion, 0.1)
-        elif key == ord('s'):
-            frame_proportion += 0.05
-            frame_proportion = min(frame_proportion, 1.0)
-        elif key == ord('x'):
-           kp_driving_initial = None
-        elif key == ord('z'):
-            overlay_alpha = max(overlay_alpha - 0.1, 0.0)
-        elif key == ord('c'):
-            overlay_alpha = min(overlay_alpha + 0.1, 1.0)
-        elif key == ord('r'):
-            preview_flip = not preview_flip
-        elif key == ord('t'):
-            output_flip = not output_flip
-        elif key == ord('f'):
-            find_keyframe = not find_keyframe
-        elif key == ord('q'):
-            try:
-                log('Loading StyleGAN avatar...')
-                avatar = load_stylegan_avatar()
-                passthrough = False
-                change_avatar(fa, avatar)
-            except:
-                log('Failed to load StyleGAN avatar')
-        #elif key == ord('i'):
-        #    show_fps = not show_fps
-        elif 48 < key < 58:
-            cur_ava = min(key - 49, len(avatars) - 1)
-            passthrough = False
-            change_avatar(fa, avatars[cur_ava])
-        elif key == 48:
-            passthrough = not passthrough
-        elif key != -1:
-            log(key)
-
-        if _streaming:
-            out = cv2.resize(out, stream_img_size)
-            stream.schedule_frame(out)
-
-        preview_frame = cv2.addWeighted( avatars[cur_ava][:,:,::-1], overlay_alpha, frame, 1.0 - overlay_alpha, 0.0)
-        
-        if preview_flip:
-            preview_frame = cv2.flip(preview_frame, 1)
-            
-        if output_flip:
-            out = cv2.flip(out, 1)
-            
-        if green_overlay:
-            green_alpha = 0.8
-            overlay = preview_frame.copy()
-            overlay[:] = (0, 255, 0)
-            preview_frame = cv2.addWeighted( preview_frame, green_alpha, overlay, 1.0 - green_alpha, 0.0)
-
-        #timing['postproc'] = (time.time() - postproc_start) * 1000
-            
-        if find_keyframe:
-            preview_frame = cv2.putText(preview_frame, display_string, (10, 220), 0, 0.5 * IMG_SIZE / 256, (255, 255, 255), 1)
-
-        #if show_fps:
-        #    timing_string = f"FPS/Model/Pre/Post: {fps:.1f} / {timing['predict']:.1f} / {timing['preproc']:.1f} / {timing['postproc']:.1f}"
-        #    preview_frame = cv2.putText(preview_frame, timing_string, (10, 240), 0, 0.3 * IMG_SIZE / 256, (255, 255, 255), 1)
-
-        cv2.imshow('cam', preview_frame)
-        cv2.imshow('avatarify', out[..., ::-1])
-
-        #fps_hist.append(time.time() - t_start)
-        #if len(fps_hist) == 10:
-        #    fps = 10 / sum(fps_hist)
-        #    fps_hist = []
-
-    cap.stop()
-    cv2.destroyAllWindows()
