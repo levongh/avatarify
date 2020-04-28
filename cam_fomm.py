@@ -232,13 +232,13 @@ if __name__ == "__main__":
     
     fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=True, device=device)
 
-    cap = VideoCaptureAsync(opt.cam)
-    cap.start()
+    cap = cv2.VideoCapture(opt.cam)
+    #cap.start()
 
-    if _streaming:
-        ret, frame = cap.read()
-        stream_img_size = frame.shape[1], frame.shape[0]
-        stream = pyfakewebcam.FakeWebcam(f'/dev/video{opt.virt_cam}', *stream_img_size)
+    #if _streaming:
+    #    ret, frame = cap.read()
+    #    stream_img_size = frame.shape[1], frame.shape[0]
+    #    stream = pyfakewebcam.FakeWebcam(f'/dev/video{opt.virt_cam}', *stream_img_size)
 
     cur_ava = 0    
     avatar = None
@@ -257,18 +257,18 @@ if __name__ == "__main__":
     output_flip = False
     find_keyframe = False
 
-    fps_hist = []
-    fps = 0
-    show_fps = False
+    #fps_hist = []
+    #fps = 0
+    #show_fps = False
 
     while True:
-        timing = {
-            'preproc': 0,
-            'predict': 0,
-            'postproc': 0
-        }
+        #timing = {
+        #    'preproc': 0,
+        #    'predict': 0,
+        #    'postproc': 0
+        #}
 
-        t_start = time.time()
+        #t_start = time.time()
 
         green_overlay = False
         
@@ -288,7 +288,7 @@ if __name__ == "__main__":
                 green_overlay = True
                 kp_driving_initial = None
 
-        timing['preproc'] = (time.time() - t_start) * 1000
+        #timing['preproc'] = (time.time() - t_start) * 1000
 
         if passthrough:
             out = frame_orig[..., ::-1]
@@ -296,12 +296,12 @@ if __name__ == "__main__":
             pred_start = time.time()
             pred = predict(frame, avatar, opt.relative, opt.adapt_scale, fa, device=device)
             out = pred
-            timing['predict'] = (time.time() - pred_start) * 1000
+        #    timing['predict'] = (time.time() - pred_start) * 1000
 
         postproc_start = time.time()
 
-        if not opt.no_pad:
-            out = pad_img(out, stream_img_size)
+        #if not opt.no_pad:
+        #    out = pad_img(out, stream_img_size)
 
         if out.dtype != np.uint8:
             out = (out * 255).astype(np.uint8)
@@ -348,8 +348,8 @@ if __name__ == "__main__":
                 change_avatar(fa, avatar)
             except:
                 log('Failed to load StyleGAN avatar')
-        elif key == ord('i'):
-            show_fps = not show_fps
+        #elif key == ord('i'):
+        #    show_fps = not show_fps
         elif 48 < key < 58:
             cur_ava = min(key - 49, len(avatars) - 1)
             passthrough = False
@@ -377,22 +377,22 @@ if __name__ == "__main__":
             overlay[:] = (0, 255, 0)
             preview_frame = cv2.addWeighted( preview_frame, green_alpha, overlay, 1.0 - green_alpha, 0.0)
 
-        timing['postproc'] = (time.time() - postproc_start) * 1000
+        #timing['postproc'] = (time.time() - postproc_start) * 1000
             
         if find_keyframe:
             preview_frame = cv2.putText(preview_frame, display_string, (10, 220), 0, 0.5 * IMG_SIZE / 256, (255, 255, 255), 1)
 
-        if show_fps:
-            timing_string = f"FPS/Model/Pre/Post: {fps:.1f} / {timing['predict']:.1f} / {timing['preproc']:.1f} / {timing['postproc']:.1f}"
-            preview_frame = cv2.putText(preview_frame, timing_string, (10, 240), 0, 0.3 * IMG_SIZE / 256, (255, 255, 255), 1)
+        #if show_fps:
+        #    timing_string = f"FPS/Model/Pre/Post: {fps:.1f} / {timing['predict']:.1f} / {timing['preproc']:.1f} / {timing['postproc']:.1f}"
+        #    preview_frame = cv2.putText(preview_frame, timing_string, (10, 240), 0, 0.3 * IMG_SIZE / 256, (255, 255, 255), 1)
 
         cv2.imshow('cam', preview_frame)
         cv2.imshow('avatarify', out[..., ::-1])
 
-        fps_hist.append(time.time() - t_start)
-        if len(fps_hist) == 10:
-            fps = 10 / sum(fps_hist)
-            fps_hist = []
+        #fps_hist.append(time.time() - t_start)
+        #if len(fps_hist) == 10:
+        #    fps = 10 / sum(fps_hist)
+        #    fps_hist = []
 
     cap.stop()
     cv2.destroyAllWindows()
