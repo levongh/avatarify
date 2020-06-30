@@ -2,8 +2,12 @@ import os, sys
 import glob
 import yaml
 import time
+from google.cloud import storage
+#import firebase-admin
+sys.path.append(os.getcwd() + "/fomm")
 from argparse import ArgumentParser
 import requests
+import json
 
 import imageio
 import numpy as np
@@ -173,7 +177,7 @@ def change_avatar(fa, new_avatar):
 def log(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-def process(opt, generator, kp_detector, fa, cap, device):
+def process(opt, generator, kp_detector, fa, cap, device, outVideo):
     global display_string
     global kp_driving_initial
     global kp_source
@@ -202,7 +206,6 @@ def process(opt, generator, kp_detector, fa, cap, device):
         
         ret, frame = cap.read()
         if not ret:
-            log("Can't receive frame (stream end?). Exiting ...")
             break
 
         frame_orig = frame.copy()
@@ -276,11 +279,6 @@ def process(opt, generator, kp_detector, fa, cap, device):
             passthrough = not passthrough
         elif key != -1:
             log(key)
-
-        if _streaming:
-            out = cv2.resize(out, stream_img_size)
-            stream.schedule_frame(out)
-
         preview_frame = cv2.addWeighted( avatars[cur_ava][:,:,::-1], overlay_alpha, frame, 1.0 - overlay_alpha, 0.0)
         
         if preview_flip:
@@ -300,10 +298,10 @@ def process(opt, generator, kp_detector, fa, cap, device):
 
         cv2.imshow('cam', preview_frame)
         cv2.imshow('avatarify', out[..., ::-1])
+        outVideo.write(out[..., ::-1])
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-
     global display_string
     display_string = ""
     global kp_driving_initial
@@ -319,18 +317,19 @@ if __name__ == "__main__":
     parser.add_argument("--adapt_scale", dest="adapt_scale", action="store_true", help="adapt movement scale based on convex hull of keypoints")
     parser.add_argument("--no-pad", dest="no_pad", action="store_true", help="don't pad output image")
 
-    parser.add_argument("--cam", type=int, default=0, help="Webcam device ID")
-    parser.add_argument("--virt-cam", type=int, default=0, help="Virtualcam device ID")
+    #parser.add_argument("--cam", type=int, default=0, help="Webcam device ID")
+    #parser.add_argument("--virt-cam", type=int, default=0, help="Virtualcam device ID")
     parser.add_argument("--no-stream", action="store_true", help="On Linux, force no streaming")
 
     parser.add_argument("--verbose", action="store_true", help="Print additional information")
 
     parser.add_argument("--avatars", default="./avatars", help="path to avatars directory")
+    parser.add_argument("--data", default='', help="input JSON file which should pe processed")
  
     parser.set_defaults(relative=True)
     parser.set_defaults(adapt_scale=True)
     parser.set_defaults(no_pad=False)
-    parser.set_defaults(cam=0);
+    #parser.set_defaults(cam=0);
     parser.set_defaults(checkpoint="vox-adv-cpk.pth.tar");
     parser.set_defaults(config="fomm/config/vox-adv-256.yaml");
 
@@ -361,8 +360,12 @@ if __name__ == "__main__":
     
     fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=True, device=device)
 
-    cap = cv2.VideoCapture(opt.cam)
-    avatar = None
-
-    process(opt, generator, kp_detector, fa, cap, device)
+    data_json = json.loads(opt.data);
+    challenge_id = data_json["challenge"];
+    videos = data_json["videos"];
+    outVideo = cv2.VideoWriter(challenge_id + "/" + challenge_id + ".mp4", cv2.VideoWriter_fourcc('M','J','P','G'), 10, (256, 256))
+    for video in videos:
+        cap = cv2.VideoCapture(challenge_id + "/" + video["url"]);
+        avatar = None
+        process(opt, generator, kp_detector, fa, cap, device, outVideo)
 

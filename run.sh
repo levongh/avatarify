@@ -2,16 +2,17 @@
 
 #set -x
 
-source scripts/settings.sh
+#source scripts/settings.sh
+CONDA_ENV_NAME=avatarify
 
-bash scripts/create_virtual_camera.sh
+#bash scripts/create_virtual_camera.sh
 
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate $CONDA_ENV_NAME
 
-CONFIG=fomm/config/vox-adv-256.yaml
-CKPT=vox-adv-cpk.pth.tar
+#CONFIG=fomm/config/vox-adv-256.yaml
+#CKPT=vox-adv-cpk.pth.tar
 
 export PYTHONPATH=$PYTHONPATH:$(pwd)/fomm
 
-python cam_fomm.py --config $CONFIG --checkpoint $CKPT --cam $CAMID --virt-cam $CAMID_VIRT --relative --adapt_scale $@
+python cam_fomm.py $@
